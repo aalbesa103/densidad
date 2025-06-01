@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulación: Densidad del CO₂ - Explorador de Leyes de los Gases</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <style>
+        .sim-container {
+            min-height: 350px; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-around;
+        }
+        .panel {
+            @apply bg-white p-4 md:p-6 rounded-lg shadow-md border border-slate-200;
+        }
+        .label-input-group {
+            @apply mb-4;
+        }
+        .label-input-group label, .checkbox-group label {
+            @apply block text-sm font-medium text-slate-700 mb-1;
+        }
+        .label-input-group input[type="number"],
+        .label-input-group input[type="text"],
+        .label-input-group select {
+            @apply w-full p-2 border border-slate-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm;
+        }
+        .value-display {
+            @apply mt-1 p-2 bg-slate-50 border border-slate-200 rounded-md text-sm text-slate-800 min-h-[38px] flex items-center justify-end;
+        }
+        .results-table th, .results-table td {
+            @apply px-3 py-2 text-left border-b border-slate-200;
+        }
+        .results-table th {
+            @apply bg-slate-50 font-semibold;
+        }
+        button:disabled {
+            @apply bg-slate-300 cursor-not-allowed opacity-70;
+        }
+        .checkbox-group {
+            @apply flex items-center mb-2;
+        }
+        .checkbox-group input[type="checkbox"] {
+            @apply h-4 w-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 mr-2;
+        }
+        /* Estilos para SVG */
+        svg {
+            max-width: 100%;
+            margin-bottom: 10px;
+        }
+        .ampolla-vidrio { fill: #e0f2fe; stroke: #38bdf8; stroke-width: 2; }
+        .ampolla-contenido { fill: #67e8f9; }
+        .ampolla-vacio { fill: #f8fafc; }
+        .kipp-vidrio { fill: #d1fae5; stroke: #34d399; stroke-width: 2;}
+        .kipp-liquido { fill: #a7f3d0; }
+        .kipp-solido { fill: #6ee7b7; }
+        .balanza-base { fill: #e5e7eb; stroke: #9ca3af; stroke-width: 1.5;}
+        .balanza-plato { fill: #d1d5db; stroke: #6b7280; stroke-width: 1;}
+        .texto-svg { font-size: 10px; fill: #4b5563; text-anchor: middle; }
+    </style>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800">
+
+    <header class="bg-indigo-600 text-white shadow-lg">
+        <div class="container mx-auto px-4 md:px-8 py-5 text-center">
+            <h1 class="text-2xl md:text-3xl font-bold mt-2 mb-1">Simulación: Determinación de la Densidad del $CO_2$</h1>
+            <p class="text-md text-indigo-100">Método de la Ampolla de Regnault (basado en TP de Guía IQ 2019)</p>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <div class="lg:col-span-1 space-y-6">
+            <div class="panel">
+                <h2 class="text-xl font-semibold text-indigo-700 mb-3">Guía del Procedimiento</h2>
+                <div id="procedimiento-guia" class="text-sm text-slate-600 space-y-2">
+                    <p><strong>Paso Actual:</strong> <span id="paso-actual" class="font-semibold">Esperando inicio...</span></p>
+                    <p id="instrucciones-paso">Configura los errores y sigue las instrucciones.</p>
+                </div>
+            </div>
+             <div class="panel">
+                <h2 class="text-xl font-semibold text-indigo-700 mb-3">Configuración de Errores</h2>
+                <div class="label-input-group">
+                    <label for="error-aire-residual">Aire Residual en Vacío (% del volumen de ampolla):</label>
+                    <input type="number" id="error-aire-residual" value="0" min="0" max="20" step="0.1">
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="error-equilibrar-presion" name="equilibrar-presion" checked>
+                    <label for="error-equilibrar-presion">Equilibrar Presión $CO_2$ con $P_{atm}$ (Paso 4)</label>
+                </div>
+                <div id="altura-hcl-group" class="label-input-group hidden">
+                    <label for="error-altura-hcl">Altura Columna HCl en Kipp (cm, si NO se equilibra):</label>
+                    <input type="number" id="error-altura-hcl" value="10" min="0" max="50" step="1">
+                </div>
+
+                <h4 class="text-md font-medium text-slate-700 mt-3 mb-1">Tren de Lavado ($CO_2$):</h4>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="error-falta-frasco-agua" name="tren-lavado">
+                    <label for="error-falta-frasco-agua">Falta frasco con Agua (elimina HCl)</label>
+                </div>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="error-falta-frasco-h2so4" name="tren-lavado">
+                    <label for="error-falta-frasco-h2so4">Falta frasco con $H_2SO_4$ (secante)</label>
+                </div>
+                 <div class="checkbox-group">
+                    <input type="checkbox" id="error-falta-frasco-silica" name="tren-lavado">
+                    <label for="error-falta-frasco-silica">Falta frasco con Sílica Gel (secante)</label>
+                </div>
+                <h4 class="text-md font-medium text-slate-700 mt-3 mb-1">Errores en Llenado con Agua:</h4>
+                 <div class="label-input-group">
+                    <label for="error-volumen-no-llenado">Volumen NO llenado con agua (mL):</label>
+                    <input type="number" id="error-volumen-no-llenado" value="0" min="0" max="50" step="0.5">
+                </div>
+                <div class="label-input-group">
+                    <label for="error-volumen-burbujas">Volumen de Burbujas con agua (mL):</label>
+                    <input type="number" id="error-volumen-burbujas" value="0" min="0" max="10" step="0.1">
+                </div>
+            </div>
+
+
+            <div class="panel">
+                <h2 class="text-xl font-semibold text-indigo-700 mb-3">Controles del Experimento</h2>
+                <div id="controles-experimento" class="space-y-3">
+                    <button id="btn-iniciar-experimento" class="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-4 rounded-md transition-colors">Iniciar Experimento</button>
+                    <button id="btn-hacer-vacio" class="w-full text-white font-semibold py-2 px-4 rounded-md" disabled>1. Hacer Vacío en Ampolla</button>
+                    <button id="btn-pesar-vacia" class="w-full text-white font-semibold py-2 px-4 rounded-md" disabled>2. Pesar Ampolla Vacía ($m_0$)</button>
+                    <button id="btn-llenar-co2" class="w-full text-white font-semibold py-2 px-4 rounded-md" disabled>3. Llenar Ampolla con $CO_2$</button>
+                    <button id="btn-equilibrar-presion-co2" class="w-full text-white font-semibold py-2 px-4 rounded-md" disabled>4. Equilibrar Presión $CO_2$</button>
+                    <button id="btn-pesar-con-co2" class="w-full text-white font-semibold py-2 px-4 rounded-md" disabled>5. Pesar Ampolla con $CO_2$ ($m_1$)</button>
+                    <button id="btn-llenar-agua" class="w-full text-white font-semibold py-2 px-4 rounded-md" disabled>6. Llenar Ampolla con Agua</button>
+                    <button id="btn-pesar-con-agua" class="w-full text-white font-semibold py-2 px-4 rounded-md" disabled>7. Pesar Ampolla con Agua ($m_2$)</button>
+                    <button id="btn-calcular-resultados" class="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-md mt-4" disabled>Calcular Resultados Finales</button>
+                    <button id="btn-reiniciar-experimento" class="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded-md mt-2">Reiniciar Simulación</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-1 space-y-6">
+            <div class="panel">
+                <h2 class="text-xl font-semibold text-indigo-700 mb-3">Visualización del Experimento</h2>
+                <div id="visualizacion-experimento" class="sim-container bg-slate-200 border border-slate-300 rounded-md p-2">
+                    <svg id="svg-ampolla" viewBox="0 0 100 150" width="80" height="120">
+                        <defs>
+                            <clipPath id="clip-ampolla">
+                                <path d="M30,10 Q30,0 50,0 Q70,0 70,10 L70,120 Q70,140 50,140 Q30,140 30,120 Z" />
+                            </clipPath>
+                        </defs>
+                        <path id="ampolla-outline" d="M30,10 Q30,0 50,0 Q70,0 70,10 L70,120 Q70,140 50,140 Q30,140 30,120 Z" class="ampolla-vidrio" />
+                        <rect id="ampolla-contenido-rect" x="30" y="10" width="40" height="130" class="ampolla-vacio" clip-path="url(#clip-ampolla)" />
+                        <text id="ampolla-texto" x="50" y="148" class="texto-svg">Ampolla</text>
+                    </svg>
+                     <svg id="svg-kipp" viewBox="0 0 100 120" width="100" height="120" style="display:none;">
+                        <circle cx="50" cy="30" r="25" class="kipp-vidrio" />
+                        <rect x="40" y="55" width="20" height="30" class="kipp-vidrio" />
+                        <circle cx="50" cy="100" r="35" class="kipp-vidrio" />
+                        <rect x="45" y="20" width="10" height="70" class="kipp-liquido" />
+                        <circle cx="50" cy="100" r="15" class="kipp-solido" />
+                        <text x="50" y="118" class="texto-svg">Kipp (CO₂)</text>
+                    </svg>
+                    <svg id="svg-balanza" viewBox="0 0 100 80" width="100" height="80" style="display:none;">
+                        <rect x="10" y="70" width="80" height="10" class="balanza-base" />
+                        <rect x="48" y="20" width="4" height="50" class="balanza-base" />
+                        <rect x="20" y="15" width="60" height="5" class="balanza-base" />
+                        <circle cx="30" cy="40" r="18" class="balanza-plato" />
+                        <circle cx="70" cy="40" r="18" class="balanza-plato" />
+                        <text id="balanza-display" x="50" y="10" class="texto-svg">0.0000 g</text>
+                    </svg>
+                    <p id="texto-visualizacion-estado" class="text-slate-600 text-sm text-center mt-2">Estado: Inicial</p>
+                </div>
+                <div id="estado-manometro" class="mt-2 text-sm text-center">Presión manómetro: --- mmHg</div>
+            </div>
+
+            <div class="panel">
+                <h2 class="text-xl font-semibold text-indigo-700 mb-3">Datos Ambientales y Medidos</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="label-input-group">
+                        <label for="temp-ambiente">Temperatura Ambiente ($T_{amb}$, °C):</label>
+                        <input type="number" id="temp-ambiente" value="25" step="0.1">
+                    </div>
+                    <div class="label-input-group">
+                        <label for="presion-atm">Presión Atmosférica ($P_{atm}$, torr):</label>
+                        <input type="number" id="presion-atm" value="760" step="0.1">
+                    </div>
+                    <div class="label-input-group">
+                        <label for="temp-agua">Temperatura del Agua ($T_{agua}$, °C):</label>
+                        <input type="number" id="temp-agua" value="25" step="0.1">
+                    </div>
+                     <div class="label-input-group">
+                        <label>Densidad del Agua ($\delta_{agua}$, g/mL):</label>
+                        <div id="densidad-agua-display" class="value-display">---</div>
+                    </div>
+                </div>
+                <hr class="my-4">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="label-input-group">
+                        <label>$m_0$ (g):</label>
+                        <div id="m0-display" class="value-display">---</div>
+                    </div>
+                    <div class="label-input-group">
+                        <label>$m_1$ (g):</label>
+                        <div id="m1-display" class="value-display">---</div>
+                    </div>
+                    <div class="label-input-group">
+                        <label>$m_2$ (g):</label>
+                        <div id="m2-display" class="value-display">---</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="lg:col-span-1 space-y-6">
+            <div class="panel">
+                <h2 class="text-xl font-semibold text-indigo-700 mb-3">Resultados de los Cálculos</h2>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full results-table text-sm">
+                        <tbody>
+                            <tr><th class="w-2/3">Descripción</th><th class="w-1/3">Valor</th></tr>
+                            <tr><td>Masa de Agua ($m_{\text{agua}}$, g):</td><td id="masa-agua-resultado">---</td></tr>
+                            <tr><td>Volumen Ampolla ($V_{\text{ampolla}}$, mL):</td><td id="volumen-ampolla-resultado">---</td></tr>
+                            <tr><td>Masa $CO_2$ ($m_{\text{CO}_2 \text{ añadida}}$, g):</td><td id="masa-co2-resultado">---</td></tr>
+                            <tr><td>Masa Neta de $CO_2$ ($m_{\text{CO}_2 \text{ neto}}$, g):</td><td id="masa-gas-neto-resultado">---</td></tr>
+                            <tr><td>$\delta_{\text{exp}}$ ($CO_2$, g/L):</td><td id="densidad-exp-resultado" class="font-semibold">---</td></tr>
+                            <tr><td>$T_{\text{amb}}$ (K):</td><td id="temp-amb-kelvin-resultado">---</td></tr>
+                            <tr><td>$P_{\text{CO}_2 \text{ en ampolla}}$ (atm):</td><td id="presion-co2-atm-resultado">---</td></tr>
+                            <tr><td>$\delta_0$ $CO_2$ (calculada, g/L):</td><td id="densidad-cntp-calculada-resultado" class="font-bold text-indigo-600">---</td></tr>
+                            <tr><td>$\delta_0$ $CO_2$ (tabulada, g/L):</td><td id="densidad-cntp-tabulada-resultado">1.977</td></tr>
+                            <tr><td>Error Absoluto (g/L):</td><td id="error-absoluto-resultado">---</td></tr>
+                            <tr><td>Error Relativo:</td><td id="error-relativo-resultado">---</td></tr>
+                            <tr><td>Error Relativo Porcentual (%):</td><td id="error-porcentual-resultado" class="font-semibold">---</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+             <div class="panel">
+                <h2 class="text-xl font-semibold text-indigo-700 mb-3">Fórmulas Clave</h2>
+                <div class="text-xs space-y-2 text-slate-600">
+                    <p>$m_{\text{agua efectiva}} = m_2 - (m_0 - m_{\text{aire residual}})$</p>
+                    <p>$V_{\text{ampolla efectiva}} = \frac{m_{\text{agua efectiva}}}{\delta_{\text{agua}}} - V_{\text{burbujas}} + V_{\text{no llenado}}$</p>
+                    <p>$m_{\text{gas añadido}} = m_1 - m_0$</p>
+                    <p>$m_{\text{CO}_2 \text{ neto}} = m_{\text{gas añadido}} - m_{\text{impurezas}}$</p>
+                    <p>$\delta_{\text{exp}} = \frac{m_{\text{CO}_2 \text{ neto}}}{V_{\text{ampolla efectiva, L}}}$</p>
+                    <p>$\delta_0 = \frac{\delta_{\text{exp}} \cdot P_0 \cdot T_{\text{amb}}}{P_{\text{gas en ampolla}} \cdot T_0}$</p>
+                    <p class="mt-1 text-xxs">$P_0 = 1 \text{ atm, } T_0 = 273.15 \text{ K}$</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="text-center py-6 bg-slate-200 text-sm text-slate-600 border-t border-slate-300 mt-8">
+        <p>&copy; 2025 Alberto Albesa. Las simulaciones son con fines educativos.</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Referencias a elementos del DOM
+            const tempAguaInput = document.getElementById('temp-agua');
+            const densidadAguaDisplay = document.getElementById('densidad-agua-display');
+            const btnIniciar = document.getElementById('btn-iniciar-experimento');
+            const botonesPasosElems = {
+                hacerVacio: document.getElementById('btn-hacer-vacio'),
+                pesarVacia: document.getElementById('btn-pesar-vacia'),
+                llenarCo2: document.getElementById('btn-llenar-co2'),
+                equilibrarPresionCo2: document.getElementById('btn-equilibrar-presion-co2'),
+                pesarConCo2: document.getElementById('btn-pesar-con-co2'),
+                llenarAgua: document.getElementById('btn-llenar-agua'),
+                pesarConAgua: document.getElementById('btn-pesar-con-agua'),
+            };
+            const btnCalcularResultados = document.getElementById('btn-calcular-resultados');
+            const btnReiniciar = document.getElementById('btn-reiniciar-experimento');
+
+            const pasoActualDisplay = document.getElementById('paso-actual');
+            const instruccionesPasoDisplay = document.getElementById('instrucciones-paso');
+            const m0Display = document.getElementById('m0-display');
+            const m1Display = document.getElementById('m1-display');
+            const m2Display = document.getElementById('m2-display');
+            const estadoManometroDisplay = document.getElementById('estado-manometro');
+            
+            const svgAmpolla = document.getElementById('svg-ampolla');
+            const svgKipp = document.getElementById('svg-kipp');
+            const svgBalanza = document.getElementById('svg-balanza');
+            const ampollaContenidoRect = document.getElementById('ampolla-contenido-rect');
+            const balanzaDisplayText = document.getElementById('balanza-display');
+            const textoVisualizacionEstado = document.getElementById('texto-visualizacion-estado');
+
+            // Controles de error
+            const errorAireResidualInput = document.getElementById('error-aire-residual');
+            const errorEquilibrarPresionCheck = document.getElementById('error-equilibrar-presion');
+            const alturaHclGroup = document.getElementById('altura-hcl-group');
+            const errorAlturaHclInput = document.getElementById('error-altura-hcl');
+            const errorFaltaFrascoAguaCheck = document.getElementById('error-falta-frasco-agua');
+            const errorFaltaFrascoH2SO4Check = document.getElementById('error-falta-frasco-h2so4');
+            const errorFaltaFrascoSilicaCheck = document.getElementById('error-falta-frasco-silica');
+            const errorVolumenNoLlenadoInput = document.getElementById('error-volumen-no-llenado');
+            const errorVolumenBurbujasInput = document.getElementById('error-volumen-burbujas');
+            
+            // Estado de la simulación
+            let pasoActualSim = 0;
+            let datosSimulacion = {
+                volumenRealAmpolla_mL: 501.5, 
+                masaRealAmpollaVacia_g: 185.2345,
+            };
+
+            const PM_CO2 = 44.01; 
+            const PM_H2O = 18.015; 
+            const PM_HCl = 36.46; 
+            const PM_AIRE_APROX = 28.97; 
+            const R_L_ATM_MOL_K = 0.0821;
+            const GRAVEDAD_M_S2 = 9.80665;
+            const DENSIDAD_HCL_SOL_KG_M3 = 1090; // 1.09 g/cm^3
+
+            const pasosDesc = [
+                "Esperando inicio...", 
+                "Realizando vacío en la ampolla...", 
+                "Pesando ampolla vacía...", 
+                "Llenando ampolla con CO₂ del Aparato de Kipp...", 
+                "Equilibrando Presión CO₂ / Cerrando Llave...", 
+                "Pesando ampolla con CO₂...", 
+                "Llenando ampolla con agua destilada...", 
+                "Pesando ampolla con agua...", 
+                "Listo para calcular resultados." 
+            ];
+            const botonesPasos = Object.values(botonesPasosElems);
+
+            errorEquilibrarPresionCheck.addEventListener('change', function() {
+                alturaHclGroup.classList.toggle('hidden', this.checked);
+                botonesPasosElems.equilibrarPresionCo2.textContent = this.checked ? "4. Equilibrar Presión CO₂" : "4. Cerrar Llave (sin equilibrar)";
+            });
+
+            function actualizarVisualizacion(estado, infoExtra = "") {
+                textoVisualizacionEstado.textContent = `Estado: ${estado}`;
+                svgAmpolla.style.display = 'none';
+                svgKipp.style.display = 'none';
+                svgBalanza.style.display = 'none';
+
+                switch(estado.toLowerCase()) {
+                    case "inicial":
+                    case "vacío realizado":
+                        svgAmpolla.style.display = 'block';
+                        ampollaContenidoRect.setAttribute('class', 'ampolla-vacio');
+                        break;
+                    case "ampolla vacía pesada":
+                        svgBalanza.style.display = 'block';
+                        balanzaDisplayText.textContent = infoExtra; 
+                        svgAmpolla.style.display = 'block'; 
+                        ampollaContenidoRect.setAttribute('class', 'ampolla-vacio');
+                        break;
+                    case "llenando con co2":
+                        svgKipp.style.display = 'block';
+                        svgAmpolla.style.display = 'block';
+                        ampollaContenidoRect.setAttribute('class', 'ampolla-contenido'); 
+                        ampollaContenidoRect.setAttribute('fill', '#a7f3d0'); 
+                        break;
+                    case "presión co2 establecida": 
+                    case "ampolla con co2 pesada":
+                        svgAmpolla.style.display = 'block';
+                        ampollaContenidoRect.setAttribute('class', 'ampolla-contenido');
+                        ampollaContenidoRect.setAttribute('fill', '#a7f3d0'); 
+                        if (estado.toLowerCase().includes("pesada")) {
+                             svgBalanza.style.display = 'block';
+                             balanzaDisplayText.textContent = infoExtra;
+                        }
+                        break;
+                    case "llenando con agua":
+                    case "ampolla con agua pesada":
+                        svgAmpolla.style.display = 'block';
+                        ampollaContenidoRect.setAttribute('class', 'ampolla-contenido');
+                        ampollaContenidoRect.setAttribute('fill', '#67e8f9'); 
+                         if (estado.toLowerCase().includes("pesada")) {
+                             svgBalanza.style.display = 'block';
+                             balanzaDisplayText.textContent = infoExtra;
+                        }
+                        break;
+                    default:
+                        svgAmpolla.style.display = 'block'; 
+                        ampollaContenidoRect.setAttribute('class', 'ampolla-vacio');
+                }
+            }
+
+            function actualizarDensidadAgua() {
+                const tempAgua = parseFloat(tempAguaInput.value);
+                let densidad = 0.9970; 
+                if (!isNaN(tempAgua)) {
+                    if (tempAgua <= 0) densidad = 0.9998;
+                    else if (tempAgua <= 4) densidad = 1.0000;
+                    else if (tempAgua <= 10) densidad = 0.9997;
+                    else if (tempAgua <= 15) densidad = 0.9991;
+                    else if (tempAgua <= 20) densidad = 0.9982;
+                    else if (tempAgua <= 25) densidad = 0.9970;
+                    else if (tempAgua <= 30) densidad = 0.9957;
+                    else if (tempAgua <= 35) densidad = 0.9940;
+                    else if (tempAgua <= 40) densidad = 0.9922;
+                    else densidad = 0.9970; 
+                }
+                datosSimulacion.densidadAgua = parseFloat(densidad.toFixed(4));
+                densidadAguaDisplay.textContent = `${datosSimulacion.densidadAgua} g/mL`;
+            }
+
+            function actualizarUIProcedimiento() {
+                pasoActualDisplay.textContent = pasosDesc[pasoActualSim];
+                let proximoBotonTexto = "Iniciar Experimento";
+                if (pasoActualSim > 0 && pasoActualSim <= botonesPasos.length) {
+                    proximoBotonTexto = botonesPasos[pasoActualSim - 1].textContent.split('. ')[1] || botonesPasos[pasoActualSim - 1].textContent;
+                } else if (pasoActualSim > botonesPasos.length) {
+                    proximoBotonTexto = "Calcular Resultados Finales";
+                }
+                instruccionesPasoDisplay.textContent = `Por favor, haz clic en el botón "${proximoBotonTexto}" para continuar.`;
+
+                botonesPasos.forEach((btn, index) => {
+                    const isActive = index === (pasoActualSim - 1);
+                    btn.disabled = !isActive;
+                    btn.className = `w-full text-white font-semibold py-2 px-4 rounded-md ${isActive ? 'bg-blue-500 hover:bg-blue-600' : 'bg-slate-300 cursor-not-allowed opacity-70'}`;
+                });
+
+                const calculosListos = pasoActualSim > botonesPasos.length;
+                btnCalcularResultados.disabled = !calculosListos;
+                btnCalcularResultados.className = `w-full text-white font-semibold py-2 px-4 rounded-md mt-4 ${calculosListos ? 'bg-green-500 hover:bg-green-600' : 'bg-slate-300 cursor-not-allowed opacity-70'}`;
+            }
+            
+            function resetearDisplaysResultados() {
+                const idsResultados = [
+                    'masa-agua-resultado', 'volumen-ampolla-resultado', 'masa-co2-resultado', 'masa-gas-neto-resultado',
+                    'densidad-exp-resultado', 'temp-amb-kelvin-resultado', 'presion-co2-atm-resultado',
+                    'densidad-cntp-calculada-resultado', 'error-absoluto-resultado',
+                    'error-relativo-resultado', 'error-porcentual-resultado'
+                ];
+                idsResultados.forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = '---';
+                });
+            }
+
+            function simularPesadaConError(base, tipo = "analitica") {
+                let errorAbsoluto = tipo === "analitica" ? 0.0001 : 0.01; 
+                return base + (Math.random() - 0.5) * 2 * errorAbsoluto * 5; 
+            }
+            
+            function calcularMasaGasIdeal_g(volumen_L, temp_K, presion_atm, PM_gas) {
+                if (temp_K <= 0 || volumen_L < 0 || presion_atm < 0) return 0;
+                const moles = (presion_atm * volumen_L) / (R_L_ATM_MOL_K * temp_K);
+                return moles * PM_gas;
+            }
+
+            btnIniciar.addEventListener('click', () => {
+                if (pasoActualSim !== 0) return;
+                pasoActualSim = 1;
+                btnIniciar.disabled = true;
+                
+                datosSimulacion.Tamb_C = parseFloat(document.getElementById('temp-ambiente').value);
+                datosSimulacion.Patm_torr = parseFloat(document.getElementById('presion-atm').value);
+                datosSimulacion.Tagua_C = parseFloat(document.getElementById('temp-agua').value);
+                datosSimulacion.equilibrarPresion = errorEquilibrarPresionCheck.checked;
+                datosSimulacion.alturaHcl_cm = datosSimulacion.equilibrarPresion ? 0 : parseFloat(errorAlturaHclInput.value);
+
+                [errorAireResidualInput, errorEquilibrarPresionCheck, errorAlturaHclInput, 
+                 errorFaltaFrascoAguaCheck, errorFaltaFrascoH2SO4Check, errorFaltaFrascoSilicaCheck, 
+                 errorVolumenNoLlenadoInput, errorVolumenBurbujasInput,
+                 document.getElementById('temp-ambiente'), document.getElementById('presion-atm'), 
+                 document.getElementById('temp-agua')].forEach(el => el.disabled = true);
+                
+                actualizarDensidadAgua();
+                actualizarUIProcedimiento();
+                actualizarVisualizacion("Inicial");
+            });
+
+            botonesPasosElems.hacerVacio.addEventListener('click', () => {
+                if (pasoActualSim !== 1) return;
+                const porcAireResidual = parseFloat(errorAireResidualInput.value) / 100;
+                datosSimulacion.presionResidual_torr = datosSimulacion.Patm_torr * porcAireResidual;
+                if (porcAireResidual === 0) {
+                    estadoManometroDisplay.textContent = "Presión manómetro: < 0.1 mmHg (Vacío alto)";
+                } else {
+                    estadoManometroDisplay.textContent = `Presión manómetro: ${datosSimulacion.presionResidual_torr.toFixed(2)} mmHg (Vacío parcial)`;
+                }
+                actualizarVisualizacion("Vacío realizado");
+                pasoActualSim++;
+                actualizarUIProcedimiento();
+            });
+
+            botonesPasosElems.pesarVacia.addEventListener('click', () => {
+                if (pasoActualSim !== 2) return;
+                const volAmpolla_L = datosSimulacion.volumenRealAmpolla_mL / 1000;
+                const Tamb_K = datosSimulacion.Tamb_C + 273.15;
+                const pResidual_atm = datosSimulacion.presionResidual_torr / 760;
+                
+                datosSimulacion.masaAireResidual_g = calcularMasaGasIdeal_g(volAmpolla_L, Tamb_K, pResidual_atm, PM_AIRE_APROX);
+                datosSimulacion.m0_medida = simularPesadaConError(datosSimulacion.masaRealAmpollaVacia_g + datosSimulacion.masaAireResidual_g);
+                
+                m0Display.textContent = datosSimulacion.m0_medida.toFixed(4) + ' g';
+                actualizarVisualizacion("Ampolla Vacía Pesada", `${datosSimulacion.m0_medida.toFixed(4)} g`);
+                pasoActualSim++;
+                actualizarUIProcedimiento();
+            });
+            
+            botonesPasosElems.llenarCo2.addEventListener('click', () => {
+                if (pasoActualSim !== 3) return;
+                estadoManometroDisplay.textContent = "Llenando con CO₂...";
+                actualizarVisualizacion("Llenando con CO2");
+                setTimeout(() => {
+                    estadoManometroDisplay.textContent = "Ampolla llena con CO₂ (presión > atm).";
+                    pasoActualSim++;
+                    actualizarUIProcedimiento();
+                }, 1500); 
+            });
+
+            botonesPasosElems.equilibrarPresionCo2.addEventListener('click', () => {
+                if (pasoActualSim !== 4) return;
+                if (datosSimulacion.equilibrarPresion) {
+                    datosSimulacion.PgasEnAmpolla_torr = datosSimulacion.Patm_torr; 
+                    estadoManometroDisplay.textContent = `Presión CO₂ en ampolla = ${datosSimulacion.PgasEnAmpolla_torr.toFixed(1)} torr (Equilibrada).`;
+                } else {
+                    const alturaHcl_m = datosSimulacion.alturaHcl_cm / 100;
+                    const sobrepresion_Pa = DENSIDAD_HCL_SOL_KG_M3 * GRAVEDAD_M_S2 * alturaHcl_m;
+                    const sobrepresion_torr = sobrepresion_Pa * (760 / 101325);
+                    datosSimulacion.PgasEnAmpolla_torr = datosSimulacion.Patm_torr + sobrepresion_torr;
+                    estadoManometroDisplay.textContent = `Presión CO₂ en ampolla = ${datosSimulacion.PgasEnAmpolla_torr.toFixed(1)} torr (No equilibrada).`;
+                }
+                actualizarVisualizacion("Presión CO2 Establecida");
+                pasoActualSim++;
+                actualizarUIProcedimiento();
+            });
+
+            botonesPasosElems.pesarConCo2.addEventListener('click', () => {
+                if (pasoActualSim !== 5) return;
+                const volAmpolla_L = datosSimulacion.volumenRealAmpolla_mL / 1000;
+                const Tamb_K = datosSimulacion.Tamb_C + 273.15;
+                const Pgas_atm = datosSimulacion.PgasEnAmpolla_torr / 760;
+
+                let masaCO2Puro_g = calcularMasaGasIdeal_g(volAmpolla_L, Tamb_K, Pgas_atm, PM_CO2);
+                let masaImpurezas_g = 0;
+                let fraccionVolImpurezas = 0;
+
+                if (errorFaltaFrascoAguaCheck.checked) { 
+                    fraccionVolImpurezas += 0.02; 
+                }
+                if (errorFaltaFrascoH2SO4Check.checked || errorFaltaFrascoSilicaCheck.checked) { 
+                    const pVaporAgua_atm_ideal = (Math.exp(20.386 - 5132 / Tamb_K)) / 760; 
+                    const pVaporAgua_atm_efectiva = Math.min(pVaporAgua_atm_ideal, Pgas_atm * 0.1); 
+                    if (Pgas_atm > 0) { 
+                         fraccionVolImpurezas += (pVaporAgua_atm_efectiva / Pgas_atm);
+                    }
+                }
+                fraccionVolImpurezas = Math.min(fraccionVolImpurezas, 0.5); 
+
+                masaCO2Puro_g *= (1 - fraccionVolImpurezas); 
+
+                if (errorFaltaFrascoAguaCheck.checked) {
+                     if (Pgas_atm > 0) { 
+                        masaImpurezas_g += calcularMasaGasIdeal_g(volAmpolla_L * 0.02, Tamb_K, Pgas_atm * 0.02, PM_HCl);
+                     }
+                }
+                if (errorFaltaFrascoH2SO4Check.checked || errorFaltaFrascoSilicaCheck.checked) {
+                     const pVaporAgua_atm_ideal = (Math.exp(20.386 - 5132 / Tamb_K)) / 760;
+                     const pVaporAgua_atm_efectiva = Math.min(pVaporAgua_atm_ideal, Pgas_atm * 0.1);
+                     if (Pgas_atm > 0) { 
+                        const volFracH2O = pVaporAgua_atm_efectiva / Pgas_atm;
+                        masaImpurezas_g += calcularMasaGasIdeal_g(volAmpolla_L * volFracH2O, Tamb_K, pVaporAgua_atm_efectiva, PM_H2O);
+                     }
+                }
+                datosSimulacion.masaImpurezas_g = masaImpurezas_g;
+                datosSimulacion.masaGasNetoReal_g = masaCO2Puro_g; 
+                
+                const masaTotalGasAnadido = datosSimulacion.masaGasNetoReal_g + datosSimulacion.masaImpurezas_g;
+                datosSimulacion.m1_medida = simularPesadaConError(datosSimulacion.masaRealAmpollaVacia_g + datosSimulacion.masaAireResidual_g + masaTotalGasAnadido);
+                
+                m1Display.textContent = datosSimulacion.m1_medida.toFixed(4) + ' g';
+                actualizarVisualizacion("Ampolla con CO2 Pesada", `${datosSimulacion.m1_medida.toFixed(4)} g`);
+                pasoActualSim++;
+                actualizarUIProcedimiento();
+            });
+
+            botonesPasosElems.llenarAgua.addEventListener('click', () => {
+                if (pasoActualSim !== 6) return;
+                estadoManometroDisplay.textContent = "---";
+                actualizarVisualizacion("Llenando con Agua");
+                 setTimeout(() => {
+                    pasoActualSim++;
+                    actualizarUIProcedimiento();
+                }, 1000);
+            });
+
+            botonesPasosElems.pesarConAgua.addEventListener('click', () => {
+                if (pasoActualSim !== 7) return;
+                const volNoLlenado_mL = parseFloat(errorVolumenNoLlenadoInput.value);
+                const volBurbujas_mL = parseFloat(errorVolumenBurbujasInput.value);
+
+                const volAguaEnAmpolla_mL = datosSimulacion.volumenRealAmpolla_mL - volNoLlenado_mL - volBurbujas_mL;
+                datosSimulacion.volumenAguaRealEnAmpolla_mL = Math.max(0, volAguaEnAmpolla_mL);
+
+                const masaAguaEnAmpolla = datosSimulacion.volumenAguaRealEnAmpolla_mL * datosSimulacion.densidadAgua;
+                
+                datosSimulacion.m2_medida = simularPesadaConError(datosSimulacion.masaRealAmpollaVacia_g + masaAguaEnAmpolla, "granaria");
+                
+                m2Display.textContent = datosSimulacion.m2_medida.toFixed(4) + ' g';
+                actualizarVisualizacion("Ampolla con Agua Pesada", `${datosSimulacion.m2_medida.toFixed(4)} g`);
+                pasoActualSim++; 
+                actualizarUIProcedimiento();
+            });
+
+            btnCalcularResultados.addEventListener('click', () => {
+                if (pasoActualSim < 8) {
+                    alert("Completa todos los pasos del experimento antes de calcular.");
+                    return;
+                }
+                actualizarVisualizacion("Calculando Resultados");
+                
+                const m0_calc = datosSimulacion.m0_medida; 
+                const m1_calc = datosSimulacion.m1_medida; 
+                const m2_calc = datosSimulacion.m2_medida; 
+                const delta_agua_usada = datosSimulacion.densidadAgua;
+                const Tamb_C_usada = datosSimulacion.Tamb_C;
+                const Pgas_torr_usada = datosSimulacion.PgasEnAmpolla_torr; 
+
+                const masa_agua_calc_g = m2_calc - (m0_calc - datosSimulacion.masaAireResidual_g);
+                document.getElementById('masa-agua-resultado').textContent = masa_agua_calc_g.toFixed(3) + ' g';
+
+                const V_ampolla_mL_calc_bruto = masa_agua_calc_g / delta_agua_usada;
+                const V_no_llenado_mL_error = parseFloat(errorVolumenNoLlenadoInput.value);
+                const V_burbujas_mL_error = parseFloat(errorVolumenBurbujasInput.value);
+                const V_ampolla_efectivo_mL = V_ampolla_mL_calc_bruto - V_no_llenado_mL_error - V_burbujas_mL_error;
+                const V_ampolla_efectivo_L = V_ampolla_efectivo_mL / 1000;
+                document.getElementById('volumen-ampolla-resultado').textContent = V_ampolla_efectivo_mL.toFixed(2) + ' mL';
+
+                const masa_gas_total_anadido_g = m1_calc - m0_calc; 
+                document.getElementById('masa-co2-resultado').textContent = masa_gas_total_anadido_g.toFixed(4) + ' g (bruta añadida)';
+                
+                const masa_gas_neto_calc_g = masa_gas_total_anadido_g - datosSimulacion.masaImpurezas_g;
+                document.getElementById('masa-gas-neto-resultado').textContent = masa_gas_neto_calc_g.toFixed(4) + ' g (CO₂ neto)';
+
+                const delta_exp_g_L_calc = (V_ampolla_efectivo_L > 0) ? (masa_gas_neto_calc_g / V_ampolla_efectivo_L) : 0;
+                document.getElementById('densidad-exp-resultado').textContent = delta_exp_g_L_calc.toFixed(4) + ' g/L';
+
+                const Tamb_K_calc = Tamb_C_usada + 273.15;
+                const Pgas_atm_calc = Pgas_torr_usada / 760;
+                document.getElementById('temp-amb-kelvin-resultado').textContent = Tamb_K_calc.toFixed(2) + ' K';
+                document.getElementById('presion-co2-atm-resultado').textContent = Pgas_atm_calc.toFixed(4) + ' atm';
+
+                const P0_atm = 1;
+                const T0_K = 273.15;
+
+                const delta0_calculada_g_L = (Pgas_atm_calc > 0 && T0_K > 0 && Tamb_K_calc > 0) ? (delta_exp_g_L_calc * P0_atm * Tamb_K_calc) / (Pgas_atm_calc * T0_K) : 0;
+                const delta0_tabulada_g_L = 1.977; 
+
+                document.getElementById('densidad-cntp-calculada-resultado').textContent = delta0_calculada_g_L.toFixed(4) + ' g/L';
+
+                const error_abs = Math.abs(delta0_calculada_g_L - delta0_tabulada_g_L);
+                const error_rel = delta0_tabulada_g_L === 0 ? 0 : error_abs / delta0_tabulada_g_L;
+                const error_porc = error_rel * 100;
+
+                document.getElementById('error-absoluto-resultado').textContent = error_abs.toFixed(4) + ' g/L';
+                document.getElementById('error-relativo-resultado').textContent = error_rel.toFixed(4);
+                document.getElementById('error-porcentual-resultado').textContent = error_porc.toFixed(2) + ' %';
+                
+                instruccionesPasoDisplay.textContent = "Cálculos completados. Puedes reiniciar la simulación.";
+            });
+
+            btnReiniciar.addEventListener('click', () => {
+                pasoActualSim = 0;
+                datosSimulacion = {
+                    volumenRealAmpolla_mL: 501.5,
+                    masaRealAmpollaVacia_g: 185.2345,
+                };
+                
+                btnIniciar.disabled = false;
+                 [errorAireResidualInput, errorEquilibrarPresionCheck, errorAlturaHclInput,
+                  errorFaltaFrascoAguaCheck, errorFaltaFrascoH2SO4Check, errorFaltaFrascoSilicaCheck, 
+                  errorVolumenNoLlenadoInput, errorVolumenBurbujasInput,
+                  document.getElementById('temp-ambiente'), document.getElementById('presion-atm'), 
+                  document.getElementById('temp-agua')].forEach(el => {
+                     el.disabled = false;
+                     if(el.type === 'checkbox') el.checked = (el.id === 'error-equilibrar-presion'); 
+                     else if (el.id.includes('error-')) el.value = "0";
+                 });
+                alturaHclGroup.classList.add('hidden'); 
+                botonesPasosElems.equilibrarPresionCo2.textContent = "4. Equilibrar Presión CO₂";
+
+
+                document.getElementById('temp-ambiente').value = "25";
+                document.getElementById('presion-atm').value = "760";
+                document.getElementById('temp-agua').value = "25";
+
+                m0Display.textContent = '---';
+                m1Display.textContent = '---';
+                m2Display.textContent = '---';
+                estadoManometroDisplay.textContent = "Presión manómetro: --- mmHg";
+                actualizarVisualizacion("Inicial");
+                actualizarDensidadAgua(); 
+                resetearDisplaysResultados();
+                actualizarUIProcedimiento();
+            });
+            
+            // Inicialización
+            tempAguaInput.addEventListener('input', actualizarDensidadAgua);
+            errorEquilibrarPresionCheck.dispatchEvent(new Event('change')); 
+            actualizarDensidadAgua();
+            actualizarUIProcedimiento();
+            actualizarVisualizacion("Inicial");
+        });
+    </script>
+
+</body>
+</html>
